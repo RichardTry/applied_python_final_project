@@ -4,136 +4,113 @@ from pickle import dump, load
 import pandas as pd
 import numpy as np
 
-def load_data():
-    data = dict()
-    tables = ('clients',
-            'close_loan',
-            'job',
-            'last_credit',
-            'loan',
-            'pens',
-            'salary',
-            'target',
-            'work')
-    for table in tables:
-        data[table] = pd.read_csv('data/D_' + table + '.csv')
-    return data
+class Model:
+    def __init__(self):
+        pass
 
-def join_data(data):
-    df = data['target']
-    df = df.merge(data['clients'],
-             left_on='ID_CLIENT',
-             right_on='ID', how='left')
-    df = df.drop(columns=['ID'])
-    df = df.merge(data['salary'],
-             left_on='ID_CLIENT',
-             right_on='ID_CLIENT', how='left')
-    df = df.merge(
-        data['loan'].groupby(['ID_CLIENT']).agg(LOAN_NUM_TOTAL=('ID_LOAN',
-                                                                'count')),
-        left_on='ID_CLIENT',
-        right_on='ID_CLIENT', how='left')
-    closed_per_client = data['loan'].merge(
-        data['close_loan'],
-        left_on='ID_LOAN',
-        right_on='ID_LOAN', how='left').groupby(['ID_CLIENT']).agg(LOAN_NUM_CLOSED=('CLOSED_FL',
-                                                                'count'))
-    df = df.merge(
-        closed_per_client,
-        left_on='ID_CLIENT',
-        right_on='ID_CLIENT', how='left')
-    df = df.drop(columns=['ID_CLIENT',
-                          'REG_ADDRESS_PROVINCE',
-                          'POSTAL_ADDRESS_PROVINCE',
-                          'FACT_ADDRESS_PROVINCE'])
-    # df = pd.get_dummies(df, columns=['EDUCATION', 'MARITAL_STATUS', 'FAMILY_INCOME'])
-    return df
+    def load_data(self):
+        data = dict()
+        tables = ('clients',
+                'close_loan',
+                'job',
+                'last_credit',
+                'loan',
+                'pens',
+                'salary',
+                'target',
+                'work')
+        for table in tables:
+            data[table] = pd.read_csv('data/D_' + table + '.csv')
+        return data
 
-def open_data():
-    return join_data(load_data())
+    def join_data(self, data):
+        df = data['target']
+        df = df.merge(data['clients'],
+                left_on='ID_CLIENT',
+                right_on='ID', how='left')
+        df = df.drop(columns=['ID'])
+        df = df.merge(data['salary'],
+                left_on='ID_CLIENT',
+                right_on='ID_CLIENT', how='left')
+        df = df.merge(
+            data['loan'].groupby(['ID_CLIENT']).agg(LOAN_NUM_TOTAL=('ID_LOAN',
+                                                                    'count')),
+            left_on='ID_CLIENT',
+            right_on='ID_CLIENT', how='left')
+        closed_per_client = data['loan'].merge(
+            data['close_loan'],
+            left_on='ID_LOAN',
+            right_on='ID_LOAN', how='left').groupby(['ID_CLIENT']).agg(LOAN_NUM_CLOSED=('CLOSED_FL',
+                                                                    'count'))
+        df = df.merge(
+            closed_per_client,
+            left_on='ID_CLIENT',
+            right_on='ID_CLIENT', how='left')
+        df = df.drop(columns=['ID_CLIENT',
+                            'REG_ADDRESS_PROVINCE',
+                            'POSTAL_ADDRESS_PROVINCE',
+                            'FACT_ADDRESS_PROVINCE'])
+        return df
 
-def preprocess_data(df: pd.DataFrame, target=False):
+    def open_data(self):
+        self.df = self.join_data(self.load_data())
 
-    if target:
-        X_df, y_df = split_data(df)
-    else:
-        X_df = df
+    def preprocess_data(self, df: pd.DataFrame, target_included=False):
+
+        if target_included:
+            X_df, y_df = self.drop_target(df)
+        else:
+            X_df = df
+        
+        features_whitelist = ['AGE', 'GENDER', 'MARITAL_STATUS', 'EDUCATION']
+        X_df = X_df.loc[:, features_whitelist]
+
+        to_encode = ['EDUCATION', 'MARITAL_STATUS', 'GENDER']
+        for col in to_encode:
+            dummy = pd.get_dummies(X_df[col], prefix=col)
+            X_df = pd.concat([X_df, dummy], axis=1)
+            X_df.drop(col, axis=1, inplace=True)
+
+        X_df.dropna(inplace=True)
+
+        if target_included:
+            return X_df, y_df
+        else:
+            return X_df
+
+    def drop_target(self, df: pd.DataFrame):
+        y = df['TARGET']
+        X = df.drop(columns=['TARGET'])
+
+        return X, y
     
-    features_whitelist = ['AGE', 'GENDER', 'MARITAL_STATUS', 'EDUCATION']
-    X_df = X_df.loc[:, features_whitelist]
-    #print('before encode', X_df.columns)
+    def train_model(self):
+        self.open_data()
+        X_df, y_df = self.preprocess_data(self.df, target_included=True)
+        self.fit(X_df, y_df)
 
-    to_encode = ['EDUCATION', 'MARITAL_STATUS', 'GENDER']
-    for col in to_encode:
-        dummy = pd.get_dummies(X_df[col], prefix=col)
-        X_df = pd.concat([X_df, dummy], axis=1)
-        #print('after concat', X_df.columns)
-        X_df.drop(col, axis=1, inplace=True)
-        #print('after drop', X_df.columns)
+    def fit(self, X_df, y_df):
+        self.model = RandomForestClassifier()
+        self.model.fit(X_df, y_df)
 
-    X_df.dropna(inplace=True)
-    #print(X_df.head(1))
+        test_prediction = self.model.predict(X_df)
+        self.accuracy = accuracy_score(test_prediction, y_df)
 
-    if target:
-        return X_df, y_df
-    else:
-        return X_df
+    def save_model(self, path="data/model_weights.mw"):
+        with open(path, "wb") as file:
+            dump(self.model, file)
 
-def split_data(df: pd.DataFrame):
-    y = df['TARGET']
-    X = df.drop(columns=['TARGET'])
+    def get_accuracy(self):
+        return self.accuracy
 
-    return X, y
+    def load_model(self, path="data/model_weights.mw"):
+        with open(path, "rb") as file:
+            return load(file)
 
 
-def fit_and_save_model(X_df, y_df, path="data/model_weights.mw"):
-    model = RandomForestClassifier()
-    model.fit(X_df, y_df)
+    def predict(self, df):
+        prediction = self.model.predict(df)[0]
+        prediction_proba = self.model.predict_proba(df)
+        prediction_proba = np.squeeze(prediction_proba)
 
-    test_prediction = model.predict(X_df)
-    accuracy = accuracy_score(test_prediction, y_df)
-    print(f"Model accuracy is {accuracy}")
-
-    with open(path, "wb") as file:
-        dump(model, file)
-
-    print(f"Model was saved to {path}")
-
-
-def load_model(path="data/model_weights.mw"):
-    with open(path, "rb") as file:
-        return load(file)
-
-
-def predict(model, df):
-    prediction = model.predict(df)[0]
-    #print('not squized', prediction)
-    #prediction = np.squeeze(prediction)
-    #print('squized', prediction)
-
-    prediction_proba = model.predict_proba(df)
-    #print('======= not squized proba', prediction_proba)
-    prediction_proba = np.squeeze(prediction_proba)
-    #print('======= squized proba', prediction_proba)
-
-    # encode_prediction_proba = {
-    #     0: "Вам не понравится наше предложение с вероятностью",
-    #     1: "Вам понравится наше предложение с вероятностью"
-    # }
-
-    encode_prediction = {
-        0: "Боимся, Вам не будет интересно наше предложение 😔",
-        1: "Кажется, Вам понравится наше предложение! 😊"
-    }
-
-    # prediction_data = {}
-    # for key, value in encode_prediction_proba.items():
-    #     prediction_data.update({value: prediction_proba[key]})
-
-    return encode_prediction[prediction], f'Уверены в этом с вероятностью в {int(prediction_proba[prediction] * 100)}%'
-
-
-if __name__ == "__main__":
-    df = open_data()
-    X_df, y_df = preprocess_data(df, target=True)
-    fit_and_save_model(X_df, y_df)
+        return prediction, prediction_proba
