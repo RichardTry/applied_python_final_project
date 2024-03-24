@@ -2,3 +2,7 @@ uvicorn
 
 redis
 fastapi
+
+sklearn
+pandas
+numpy
