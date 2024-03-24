@@ -79,7 +79,7 @@ async def ping():
 @app.get("/predict")
 async def predict(age: int, gender: Gender, education: Education,
                   marital_status: MaritalStatus):
-    key = (str(age) + gender.value).encode()
+    key = (str(age) + gender.value + education.value + marital_status.value).encode()
     cached_predict = await get_cached_data(key)
     if cached_predict:
         return cached_predict
@@ -95,15 +95,22 @@ async def predict(age: int, gender: Gender, education: Education,
 
     user_X_df = preprocessed_X_df[:1]
 
-    prediction, prediction_probas = model.predict(user_X_df)
+    prediction, _ = model.predict(user_X_df)
     
-    #await set_cached_data(param, b'CACHED!!!!')
-    return {"prediction": prediction.item(),
-            "prediction_probas": prediction_probas.tolist()}
+    await set_cached_data(key, prediction.item())
+    return {"prediction": prediction.item()}
 
 @app.get("/retrain")
-async def retrain_model(param: str):
-    pass
+async def retrain_model(age: int, gender: Gender, education: Education,
+                  marital_status: MaritalStatus, target):
+    gender = 1 if gender == Gender.MALE else 0
+    user_input_df = pd.DataFrame({"AGE": [age],
+                                  "GENDER": [gender],
+                                  "MARITAL_STATUS": [marital_status_map[marital_status.value]],
+                                  "EDUCATION": [education_map[education.value]],
+                                  "TARGET": target})
+    model.train_model(df=user_input_df)
+    return ''
 
 @app.get("/weights")
 async def get_weights():

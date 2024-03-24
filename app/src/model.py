@@ -84,8 +84,12 @@ class Model:
 
         return X, y
     
-    def train_model(self):
-        self.open_data()
+    def train_model(self, df=None):
+        if df is None:
+            self.open_data()
+        else:
+            df = df.apply(lambda x: x.fillna(x.median()) if x.dtype != 'O' else x.fillna(x.mode()[0]), axis=0)
+            self.df = df
         X_df, y_df = self.preprocess_data(self.df, target_included=True)
         self.fit(X_df, y_df)
 
