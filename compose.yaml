@@ -1,0 +1,15 @@
+services:
+  app:
+    container_name: fastapi
+    depends_on:
+     - redis
+    build: app/
+    ports:
+      - "8000:8000"
+    expose:
+      - "8000"
+  redis:
+    container_name: redis
+    image: redis:latest
+    expose:
+      - "6379"
